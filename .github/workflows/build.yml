@@ -6,8 +6,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-java@v3
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
@@ -21,7 +21,7 @@ jobs:
           sed -i 's/<\/application>/<service android:name=".BlockingService" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE" android:exported="true"><intent-filter><action android:name="android.accessibilityservice.AccessibilityService" \/><\/intent-filter><meta-data android:name="android.accessibilityservice" android:resource="@xml\/accessibility_service_config" \/><\/service><\/application>/' android/app/src/main/AndroidManifest.xml
       - name: Build APK
         run: flutter build apk --release
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: release-apk
           path: build/app/outputs/flutter-apk/app-release.apk
