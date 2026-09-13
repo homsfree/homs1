@@ -5,7 +5,11 @@ import android.view.accessibility.AccessibilityEvent
 import android.content.Intent
 
 class BlockingService : AccessibilityService() {
-    private val badWords = listOf("youtube", "tiktok", "porn", "xxx", "ممنوع")
+    private val badWords = listOf(
+        "porn", "xxx", "nsfw", "pornhub", "xnxx", "xvideos", 
+        "xhamster", "brazzers", "onlyfans", "sex",
+        "اباحي", "سكس", "جنس", "للكبار فقط", "نيك"
+    )
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
