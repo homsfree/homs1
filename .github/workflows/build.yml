@@ -13,12 +13,35 @@ jobs:
 
       - uses: actions/setup-java@v4
         with:
-          distribution: 'zulu'
+          distribution: zulu
           java-version: '17'
 
       - uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'
+          channel: stable
+
+      - name: Generate modern Android project
+        run: flutter create --platforms=android --org com.homsfree --project-name blocker .
+
+      - name: Restore blocker Android files
+        run: |
+          mkdir -p android/app/src/main/kotlin/com/homsfree/blocker
+          mkdir -p android/app/src/main/res/xml
+          mkdir -p android/app/src/main/assets
+
+          git checkout HEAD -- android/app/src/main/kotlin/com/homsfree/blocker/BlockingService.kt
+          git checkout HEAD -- android/app/src/main/kotlin/com/homsfree/blocker/MainActivity.kt
+          git checkout HEAD -- android/app/src/main/res/xml/accessibility_service_config.xml
+          git checkout HEAD -- android/app/src/main/assets/nsfw.tflite
+          git checkout HEAD -- android/app/src/main/AndroidManifest.xml
+
+      - name: Verify Android files
+        run: |
+          test -f android/app/src/main/AndroidManifest.xml
+          test -f android/app/src/main/kotlin/com/homsfree/blocker/MainActivity.kt
+          test -f android/app/src/main/kotlin/com/homsfree/blocker/BlockingService.kt
+          test -f android/app/src/main/res/xml/accessibility_service_config.xml
+          echo "Android blocker files verified"
 
       - name: Build APK
         run: flutter build apk --release
