@@ -7,7 +7,7 @@ import android.view.Gravity
 import android.view.WindowManager
 import android.view.View
 import android.content.Context
-
+import android.content.Intent
 import android.graphics.Color
 
 class BlockingService : AccessibilityService() {
@@ -20,14 +20,14 @@ class BlockingService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // يمكنك هنا تفعيل طبقة التشويش عند الحاجة
+        // يمكنك هنا ربط عرض طبقة التشويش بالذكاء الاصطناعي لاحقاً
     }
 
     private fun showBlurOverlay() {
         if (blurOverlayView != null) return
         
         blurOverlayView = View(this).apply {
-            setBackgroundColor(Color.argb(200, 50, 50, 50)) // طبقة تعتيم وتشويش سريعة
+            setBackgroundColor(Color.argb(200, 50, 50, 50))
         }
 
         val params = WindowManager.LayoutParams(
