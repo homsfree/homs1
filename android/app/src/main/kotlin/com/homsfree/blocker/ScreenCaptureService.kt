@@ -18,25 +18,26 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.util.DisplayMetrics
+import android.view.Display
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import android.graphics.Color
 import android.widget.FrameLayout
+import android.util.Log
 
 class ScreenCaptureService : Service() {
 
     private var mediaProjection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var imageReader: ImageReader? = null
-    private var windowManager: WindowManager? = null
     private var blurOverlayView: View? = null
+    private var customWindowContext: Context? = null // السياق المخصص لأندرويد 16
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
-        windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         createNotificationChannel()
     }
 
@@ -45,16 +46,14 @@ class ScreenCaptureService : Service() {
         val resultData = intent?.getParcelableExtra<Intent>("data")
         
         if (resultCode != -1 && resultData != null) {
-            // 1. إصلاح أندرويد 14: إخبار النظام فوراً أننا نصور الشاشة حتى لا يقتل التطبيق
             startForegroundServiceNotification()
             
-            // 2. بدء محرك التصوير
             val projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
             mediaProjection = projectionManager.getMediaProjection(resultCode, resultData)
             
             startScreenCapture()
             
-            // 3. اختبار التشويش باللون الأحمر
+            // تجربة الشاشة الحمراء بالطريقة المتوافقة مع أندرويد 16
             showRedScreenTest()
         }
 
@@ -65,17 +64,16 @@ class ScreenCaptureService : Service() {
         val notification: Notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, "BlurEngineChannel")
                 .setContentTitle("درع الحماية الذكي")
-                .setContentText("المحرك يعمل...")
+                .setContentText("محرك المراقبة يعمل...")
                 .setSmallIcon(android.R.drawable.ic_secure)
                 .build()
         } else {
             Notification.Builder(this)
                 .setContentTitle("درع الحماية الذكي")
-                .setContentText("المحرك يعمل...")
+                .setContentText("محرك المراقبة يعمل...")
                 .build()
         }
         
-        // السر هنا لمنع الانهيار في أندرويد الحديث
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
         } else {
@@ -96,8 +94,9 @@ class ScreenCaptureService : Service() {
     }
 
     private fun startScreenCapture() {
+        val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val metrics = DisplayMetrics()
-        windowManager?.defaultDisplay?.getMetrics(metrics)
+        wm.defaultDisplay.getMetrics(metrics)
         val width = metrics.widthPixels
         val height = metrics.heightPixels
         val density = metrics.densityDpi
@@ -113,10 +112,7 @@ class ScreenCaptureService : Service() {
 
         imageReader?.setOnImageAvailableListener({ reader ->
             val image = reader.acquireLatestImage()
-            if (image != null) {
-                // التخلص من الصورة لعدم التسريب
-                image.close() 
-            }
+            image?.close() 
         }, Handler(Looper.getMainLooper()))
     }
 
@@ -124,46 +120,57 @@ class ScreenCaptureService : Service() {
         Handler(Looper.getMainLooper()).post {
             try {
                 if (blurOverlayView == null) {
-                    val metrics = DisplayMetrics()
-                    windowManager?.defaultDisplay?.getMetrics(metrics)
-                    val width = metrics.widthPixels
-                    val height = metrics.heightPixels
+                    // بناء السياق المرئي (WindowContext) المخصص لأنظمة أندرويد 12 و 13 و 14 و 15 و 16
+                    val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+                    val display = displayManager.getDisplay(Display.DEFAULT_DISPLAY)
                     
-                    blurOverlayView = FrameLayout(this).apply {
-                        setBackgroundColor(Color.RED) // شاشة حمراء فاقعة
+                    val contextToUse = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        customWindowContext = createDisplayContext(display).createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
+                        customWindowContext!!
+                    } else {
+                        this
+                    }
+
+                    val wm = contextToUse.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+                    
+                    blurOverlayView = FrameLayout(contextToUse).apply {
+                        setBackgroundColor(Color.RED)
                     }
                     
                     val params = WindowManager.LayoutParams(
-                        width,
-                        height + 200, // تجاوز أبعاد الشاشة لضمان التغطية
+                        WindowManager.LayoutParams.MATCH_PARENT,
+                        WindowManager.LayoutParams.MATCH_PARENT,
                         WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or 
                         WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
                         WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
                         PixelFormat.TRANSLUCENT
-                    )
-                    params.gravity = Gravity.TOP or Gravity.START
+                    ).apply {
+                        gravity = Gravity.TOP or Gravity.START
+                    }
                     
-                    windowManager?.addView(blurOverlayView, params)
+                    wm.addView(blurOverlayView, params)
+                    Log.d("BlurEngine", "نجح رسم الشاشة الحمراء في أندرويد 16!")
                     
-                    // إزالة الشاشة الحمراء بعد 4 ثواني
                     Handler(Looper.getMainLooper()).postDelayed({
                         removeBlurOverlay()
                     }, 4000)
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.e("BlurEngine", "فشل الرسم: ${e.message}")
             }
         }
     }
 
     private fun removeBlurOverlay() {
         Handler(Looper.getMainLooper()).post {
-            blurOverlayView?.let {
+            blurOverlayView?.let { view ->
                 try {
-                    windowManager?.removeView(it)
+                    val wm = (customWindowContext ?: this).getSystemService(Context.WINDOW_SERVICE) as WindowManager
+                    wm.removeView(view)
                 } catch (e: Exception) {}
                 blurOverlayView = null
+                customWindowContext = null
             }
         }
     }
