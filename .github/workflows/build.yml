@@ -14,7 +14,11 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-      - name: Inject TFLite Only
+      - name: Generate missing files and Restore our Custom Code
+        run: |
+          flutter create --org com.homsfree --project-name blocker .
+          git checkout .
+      - name: Inject TFLite 
         run: |
           sed -i '/dependencies {/a \    implementation "org.tensorflow:tensorflow-lite:2.14.0"\n    implementation "org.tensorflow:tensorflow-lite-support:0.4.4"' android/app/build.gradle
       - name: Build APK
