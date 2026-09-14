@@ -1,4 +1,6 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.homsfree.blocker">
+    
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.BIND_ACCESSIBILITY_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -9,7 +11,11 @@
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         
-        <!-- خدمة المراقبة السابقة -->
+        <!-- هذا السطر يخبر Flutter أننا نستخدم البنية الحديثة v2 -->
+        <meta-data
+            android:name="flutterEmbedding"
+            value="2" />
+
         <service
             android:name=".BlockingService"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
@@ -22,7 +28,6 @@
                 android:resource="@xml/accessibility_service_config" />
         </service>
 
-        <!-- الخدمة الأمامية الجديدة لالتقاط الشاشة -->
         <service 
             android:name=".ScreenCaptureService"
             android:foregroundServiceType="mediaProjection"
@@ -44,6 +49,5 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
-        <meta-data android:name="flutterEmbedding" value="2" />
     </application>
 </manifest>
