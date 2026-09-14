@@ -8,32 +8,58 @@ import android.view.WindowManager
 import android.view.View
 import android.content.Context
 import android.content.Intent
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
 import android.graphics.Color
+import android.os.Handler
+import android.os.Looper
+import android.os.Build
 
 class BlockingService : AccessibilityService() {
     private var windowManager: WindowManager? = null
     private var blurOverlayView: View? = null
+    
+    // مستقبل الأوامر من محرك فحص الشاشة
+    private val blurCommandReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == "com.homsfree.blocker.SHOW_BLUR") {
+                showBlurOverlay()
+                // إزالة التشويش بعد 3 ثواني للاختبار
+                Handler(Looper.getMainLooper()).postDelayed({
+                    removeBlurOverlay()
+                }, 3000)
+            }
+        }
+    }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        
+        // تسجيل الاستماع لأوامر التشويش
+        val filter = IntentFilter("com.homsfree.blocker.SHOW_BLUR")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(blurCommandReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(blurCommandReceiver, filter)
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // يمكنك هنا ربط عرض طبقة التشويش بالذكاء الاصطناعي لاحقاً
+        // لا نحتاج لعمل شيء هنا حالياً، الأوامر ستأتي من Broadcast
     }
 
     private fun showBlurOverlay() {
         if (blurOverlayView != null) return
         
         blurOverlayView = View(this).apply {
-            setBackgroundColor(Color.argb(200, 50, 50, 50))
+            setBackgroundColor(Color.argb(230, 0, 0, 0)) // أسود شبه كامل
         }
 
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY, // أقوى نوع نافذة
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
             PixelFormat.TRANSLUCENT
         ).apply {
@@ -58,6 +84,9 @@ class BlockingService : AccessibilityService() {
 
     override fun onUnbind(intent: Intent?): Boolean {
         removeBlurOverlay()
+        try {
+            unregisterReceiver(blurCommandReceiver)
+        } catch (e: Exception) {}
         return super.onUnbind(intent)
     }
 
