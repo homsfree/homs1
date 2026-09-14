@@ -16,18 +16,14 @@ jobs:
           channel: 'stable'
       - name: Nuclear Option - Fresh Architecture & Inject Engine
         run: |
-          # 1. حفظ أكواد محرك التشويش الخاص بنا
           mkdir -p /tmp/engine_code
           cp -r android/app/src/main/kotlin/com/homsfree/blocker/* /tmp/engine_code/ || true
           
-          # 2. تدمير المجلد التالف وإنشاء بنية Flutter حديثة ونقية
           rm -rf android
           flutter create --platforms=android --org com.homsfree --project-name blocker .
           
-          # 3. استعادة أكواد المحرك الخاصة بنا إلى المجلد الجديد
           cp -r /tmp/engine_code/* android/app/src/main/kotlin/com/homsfree/blocker/
           
-          # 4. إنشاء ملفات إعدادات إمكانية الوصول
           mkdir -p android/app/src/main/res/xml
           mkdir -p android/app/src/main/res/values
           
@@ -46,7 +42,6 @@ jobs:
           </resources>
           XML
           
-          # 5. حقن الصلاحيات بشكل آمن جداً في AndroidManifest عبر بايثون
           python -c "
           import xml.etree.ElementTree as ET
           ET.register_namespace('android', 'http://schemas.android.com/apk/res/android')
@@ -71,8 +66,8 @@ jobs:
           tree.write('android/app/src/main/AndroidManifest.xml', encoding='utf-8', xml_declaration=True)
           "
           
-          # 6. إضافة مكتبات الذكاء الاصطناعي
-          sed -i '/dependencies {/a \    implementation "org.tensorflow:tensorflow-lite:2.14.0"\n    implementation "org.tensorflow:tensorflow-lite-support:0.4.4"' android/app/build.gradle
+          # استهداف ملف kts الجديد واستخدام صيغة Kotlin الصحيحة
+          sed -i '/dependencies {/a \    implementation("org.tensorflow:tensorflow-lite:2.14.0")\n    implementation("org.tensorflow:tensorflow-lite-support:0.4.4")' android/app/build.gradle.kts
       - name: Build APK
         run: flutter build apk --release
       - uses: actions/upload-artifact@v4
