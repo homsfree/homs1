@@ -1,51 +1,24 @@
 name: Build Flutter APK
-
 on:
   push:
     branches: [ main, master ]
-
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-java@v4
         with:
-          distribution: zulu
+          distribution: 'zulu'
           java-version: '17'
-
       - uses: subosito/flutter-action@v2
         with:
-          channel: stable
-
-      - name: Generate modern Android project
-        run: flutter create --platforms=android --org com.homsfree --project-name blocker .
-
-      - name: Restore blocker Android files
+          channel: 'stable'
+      - name: Inject TFLite Only
         run: |
-          mkdir -p android/app/src/main/kotlin/com/homsfree/blocker
-          mkdir -p android/app/src/main/res/xml
-          mkdir -p android/app/src/main/assets
-
-          git checkout HEAD -- android/app/src/main/kotlin/com/homsfree/blocker/BlockingService.kt
-          git checkout HEAD -- android/app/src/main/kotlin/com/homsfree/blocker/MainActivity.kt
-          git checkout HEAD -- android/app/src/main/res/xml/accessibility_service_config.xml
-          git checkout HEAD -- android/app/src/main/assets/nsfw.tflite
-          git checkout HEAD -- android/app/src/main/AndroidManifest.xml
-
-      - name: Verify Android files
-        run: |
-          test -f android/app/src/main/AndroidManifest.xml
-          test -f android/app/src/main/kotlin/com/homsfree/blocker/MainActivity.kt
-          test -f android/app/src/main/kotlin/com/homsfree/blocker/BlockingService.kt
-          test -f android/app/src/main/res/xml/accessibility_service_config.xml
-          echo "Android blocker files verified"
-
+          sed -i '/dependencies {/a \    implementation "org.tensorflow:tensorflow-lite:2.14.0"\n    implementation "org.tensorflow:tensorflow-lite-support:0.4.4"' android/app/build.gradle
       - name: Build APK
         run: flutter build apk --release
-
       - uses: actions/upload-artifact@v4
         with:
           name: release-apk
