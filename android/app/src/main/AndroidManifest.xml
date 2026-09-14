@@ -28,10 +28,10 @@
             </intent-filter>
         </activity>
 
-        <!-- هذا هو السطر الذهبي الذي يحل الخطأ -->
+        <!-- تم إصلاح الخطأ هنا بإضافة البادئة android:value -->
         <meta-data
             android:name="flutterEmbedding"
-            value="2" />
+            android:value="2" />
 
         <service
             android:name=".BlockingService"
