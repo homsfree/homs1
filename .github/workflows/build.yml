@@ -14,6 +14,65 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
+      - name: Nuclear Option - Fresh Architecture & Inject Engine
+        run: |
+          # 1. حفظ أكواد محرك التشويش الخاص بنا
+          mkdir -p /tmp/engine_code
+          cp -r android/app/src/main/kotlin/com/homsfree/blocker/* /tmp/engine_code/ || true
+          
+          # 2. تدمير المجلد التالف وإنشاء بنية Flutter حديثة ونقية
+          rm -rf android
+          flutter create --platforms=android --org com.homsfree --project-name blocker .
+          
+          # 3. استعادة أكواد المحرك الخاصة بنا إلى المجلد الجديد
+          cp -r /tmp/engine_code/* android/app/src/main/kotlin/com/homsfree/blocker/
+          
+          # 4. إنشاء ملفات إعدادات إمكانية الوصول
+          mkdir -p android/app/src/main/res/xml
+          mkdir -p android/app/src/main/res/values
+          
+          cat << 'XML' > android/app/src/main/res/xml/accessibility_service_config.xml
+          <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+              android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged"
+              android:accessibilityFeedbackType="feedbackGeneric"
+              android:accessibilityFlags="flagDefault"
+              android:canRetrieveWindowContent="true"
+              android:description="@string/accessibility_service_description" />
+          XML
+          
+          cat << 'XML' > android/app/src/main/res/values/strings.xml
+          <resources>
+              <string name="accessibility_service_description">محرك التشويش والحماية</string>
+          </resources>
+          XML
+          
+          # 5. حقن الصلاحيات بشكل آمن جداً في AndroidManifest عبر بايثون
+          python -c "
+          import xml.etree.ElementTree as ET
+          ET.register_namespace('android', 'http://schemas.android.com/apk/res/android')
+          tree = ET.parse('android/app/src/main/AndroidManifest.xml')
+          manifest = tree.getroot()
+          app = manifest.find('application')
+          
+          perms = ['android.permission.SYSTEM_ALERT_WINDOW', 'android.permission.BIND_ACCESSIBILITY_SERVICE', 'android.permission.FOREGROUND_SERVICE', 'android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION']
+          for p in reversed(perms):
+              elem = ET.Element('uses-permission', {'{http://schemas.android.com/apk/res/android}name': p})
+              manifest.insert(0, elem)
+          
+          srv1 = ET.Element('service', {'{http://schemas.android.com/apk/res/android}name': '.BlockingService', '{http://schemas.android.com/apk/res/android}permission': 'android.permission.BIND_ACCESSIBILITY_SERVICE', '{http://schemas.android.com/apk/res/android}exported': 'true'})
+          intent1 = ET.SubElement(srv1, 'intent-filter')
+          ET.SubElement(intent1, 'action', {'{http://schemas.android.com/apk/res/android}name': 'android.accessibilityservice.AccessibilityService'})
+          ET.SubElement(srv1, 'meta-data', {'{http://schemas.android.com/apk/res/android}name': 'android.accessibilityservice', '{http://schemas.android.com/apk/res/android}resource': '@xml/accessibility_service_config'})
+          app.append(srv1)
+          
+          srv2 = ET.Element('service', {'{http://schemas.android.com/apk/res/android}name': '.ScreenCaptureService', '{http://schemas.android.com/apk/res/android}foregroundServiceType': 'mediaProjection', '{http://schemas.android.com/apk/res/android}exported': 'false'})
+          app.append(srv2)
+          
+          tree.write('android/app/src/main/AndroidManifest.xml', encoding='utf-8', xml_declaration=True)
+          "
+          
+          # 6. إضافة مكتبات الذكاء الاصطناعي
+          sed -i '/dependencies {/a \    implementation "org.tensorflow:tensorflow-lite:2.14.0"\n    implementation "org.tensorflow:tensorflow-lite-support:0.4.4"' android/app/build.gradle
       - name: Build APK
         run: flutter build apk --release
       - uses: actions/upload-artifact@v4
