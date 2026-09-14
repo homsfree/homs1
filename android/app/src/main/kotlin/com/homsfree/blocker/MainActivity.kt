@@ -9,82 +9,63 @@ import android.net.Uri
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
-import android.util.Log
+import android.text.TextUtils
+import android.widget.Toast
 
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "com.homsfree.blocker/blur_engine"
     private val SCREEN_RECORD_REQUEST_CODE = 1000
-    private val OVERLAY_PERMISSION_REQ_CODE = 1001
-    private lateinit var mediaProjectionManager: MediaProjectionManager
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        
-        mediaProjectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+        val mediaProjectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
-            when (call.method) {
-                "updateSettings" -> {
-                    val blurImages = call.argument<Boolean>("blurImages") ?: false
-                    if (blurImages) {
-                        checkAndRequestPermissions()
+            if (call.method == "updateSettings") {
+                val blurImages = call.argument<Boolean>("blurImages") ?: false
+                if (blurImages) {
+                    // التحقق من الصلاحيات بالترتيب
+                    if (!isAccessibilityEnabled()) {
+                        Toast.makeText(this, "يرجى تفعيل (درع الحماية الذكي) من إعدادات إمكانية الوصول", Toast.LENGTH_LONG).show()
+                        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+                        Toast.makeText(this, "يرجى تفعيل (الظهور فوق التطبيقات)", Toast.LENGTH_LONG).show()
+                        startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
                     } else {
-                        Log.d("BlurEngine", "جاري إيقاف الخدمة...")
-                        stopService(Intent(this, ScreenCaptureService::class.java))
+                        // كل الأذونات جاهزة، نطلب تسجيل الشاشة
+                        startActivityForResult(mediaProjectionManager.createScreenCaptureIntent(), SCREEN_RECORD_REQUEST_CODE)
                     }
-                    result.success(true)
+                } else {
+                    stopService(Intent(this, ScreenCaptureService::class.java))
                 }
-                else -> result.notImplemented()
+                result.success(true)
             }
         }
     }
 
-    // فحص وطلب إذن الظهور فوق التطبيقات
-    private fun checkAndRequestPermissions() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
-            Log.d("BlurEngine", "طلب إذن الظهور فوق التطبيقات...")
-            val intent = Intent(
-                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                Uri.parse("package:$packageName")
-            )
-            startActivityForResult(intent, OVERLAY_PERMISSION_REQ_CODE)
-        } else {
-            // إذا كان الإذن ممنوحاً مسبقاً، ننتقل لطلب مشاركة الشاشة
-            startScreenCaptureRequest()
+    private fun isAccessibilityEnabled(): Boolean {
+        val expectedName = "$packageName/${BlockingService::class.java.name}"
+        val enabledServices = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: return false
+        val splitter = TextUtils.SimpleStringSplitter(':')
+        splitter.setString(enabledServices)
+        while (splitter.hasNext()) {
+            if (splitter.next().equals(expectedName, ignoreCase = true)) return true
         }
-    }
-
-    private fun startScreenCaptureRequest() {
-        Log.d("BlurEngine", "جاري طلب إذن تسجيل الشاشة...")
-        val captureIntent = mediaProjectionManager.createScreenCaptureIntent()
-        startActivityForResult(captureIntent, SCREEN_RECORD_REQUEST_CODE)
+        return false
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        if (requestCode == OVERLAY_PERMISSION_REQ_CODE) {
-            // بعد عودة المستخدم من شاشة الإعدادات
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Settings.canDrawOverlays(this)) {
-                startScreenCaptureRequest() // الإذن تم منحه، الآن نطلب تسجيل الشاشة
-            } else {
-                Log.d("BlurEngine", "تم رفض إذن الظهور فوق التطبيقات!")
+        if (requestCode == SCREEN_RECORD_REQUEST_CODE && resultCode == RESULT_OK && data != null) {
+            val serviceIntent = Intent(this, ScreenCaptureService::class.java).apply {
+                putExtra("code", resultCode)
+                putExtra("data", data)
             }
-        } else if (requestCode == SCREEN_RECORD_REQUEST_CODE) {
-            if (resultCode == RESULT_OK && data != null) {
-                Log.d("BlurEngine", "المستخدم وافق على تسجيل الشاشة! جاري تشغيل المحرك.")
-                val serviceIntent = Intent(this, ScreenCaptureService::class.java).apply {
-                    putExtra("code", resultCode)
-                    putExtra("data", data)
-                }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    startForegroundService(serviceIntent)
-                } else {
-                    startService(serviceIntent)
-                }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(serviceIntent)
             } else {
-                Log.d("BlurEngine", "المستخدم رفض إذن تسجيل الشاشة.")
+                startService(serviceIntent)
             }
-        } else {
-            super.onActivityResult(requestCode, resultCode, data)
         }
+        super.onActivityResult(requestCode, resultCode, data)
     }
 }

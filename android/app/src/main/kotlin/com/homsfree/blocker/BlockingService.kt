@@ -14,20 +14,16 @@ import android.graphics.Color
 import android.os.Handler
 import android.os.Looper
 import android.os.Build
+import android.widget.FrameLayout
 
 class BlockingService : AccessibilityService() {
     private var windowManager: WindowManager? = null
     private var blurOverlayView: View? = null
-    
-    // مستقبل الأوامر من محرك فحص الشاشة
-    private val blurCommandReceiver = object : BroadcastReceiver() {
+
+    private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == "com.homsfree.blocker.SHOW_BLUR") {
-                showBlurOverlay()
-                // إزالة التشويش بعد 3 ثواني للاختبار
-                Handler(Looper.getMainLooper()).postDelayed({
-                    removeBlurOverlay()
-                }, 3000)
+            if (intent?.action == "SHOW_RED_SCREEN") {
+                showRedScreen()
             }
         }
     }
@@ -36,61 +32,55 @@ class BlockingService : AccessibilityService() {
         super.onServiceConnected()
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         
-        // تسجيل الاستماع لأوامر التشويش
-        val filter = IntentFilter("com.homsfree.blocker.SHOW_BLUR")
+        val filter = IntentFilter("SHOW_RED_SCREEN")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(blurCommandReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
         } else {
-            registerReceiver(blurCommandReceiver, filter)
+            registerReceiver(receiver, filter)
         }
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // لا نحتاج لعمل شيء هنا حالياً، الأوامر ستأتي من Broadcast
-    }
-
-    private fun showBlurOverlay() {
+    private fun showRedScreen() {
         if (blurOverlayView != null) return
         
-        blurOverlayView = View(this).apply {
-            setBackgroundColor(Color.argb(230, 0, 0, 0)) // أسود شبه كامل
-        }
+        Handler(Looper.getMainLooper()).post {
+            try {
+                blurOverlayView = FrameLayout(this).apply {
+                    setBackgroundColor(Color.RED)
+                }
 
-        val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY, // أقوى نوع نافذة
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP
-        }
+                val params = WindowManager.LayoutParams(
+                    WindowManager.LayoutParams.MATCH_PARENT,
+                    WindowManager.LayoutParams.MATCH_PARENT,
+                    WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY, // هذه الصلاحية لا يمكن لأندرويد 16 قهرها
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                    PixelFormat.TRANSLUCENT
+                ).apply {
+                    gravity = Gravity.TOP or Gravity.START
+                }
 
-        try {
-            windowManager?.addView(blurOverlayView, params)
-        } catch (e: Exception) {
-            e.printStackTrace()
+                windowManager?.addView(blurOverlayView, params)
+
+                // إزالة اللون الأحمر بعد 4 ثواني
+                Handler(Looper.getMainLooper()).postDelayed({
+                    removeOverlay()
+                }, 4000)
+            } catch (e: Exception) { }
         }
     }
 
-    private fun removeBlurOverlay() {
+    private fun removeOverlay() {
         blurOverlayView?.let {
-            try {
-                windowManager?.removeView(it)
-            } catch (e: Exception) {}
+            try { windowManager?.removeView(it) } catch (e: Exception) {}
             blurOverlayView = null
         }
     }
 
-    override fun onUnbind(intent: Intent?): Boolean {
-        removeBlurOverlay()
-        try {
-            unregisterReceiver(blurCommandReceiver)
-        } catch (e: Exception) {}
-        return super.onUnbind(intent)
-    }
-
-    override fun onInterrupt() {
-        removeBlurOverlay()
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
+    override fun onInterrupt() { removeOverlay() }
+    override fun onDestroy() {
+        super.onDestroy()
+        removeOverlay()
+        try { unregisterReceiver(receiver) } catch (e: Exception) {}
     }
 }
