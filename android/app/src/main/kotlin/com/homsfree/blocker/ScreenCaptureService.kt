@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
@@ -21,6 +22,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import android.graphics.Color
+import android.widget.FrameLayout
 
 class ScreenCaptureService : Service() {
 
@@ -43,14 +45,17 @@ class ScreenCaptureService : Service() {
         val resultData = intent?.getParcelableExtra<Intent>("data")
         
         if (resultCode != -1 && resultData != null) {
+            // 1. إصلاح أندرويد 14: إخبار النظام فوراً أننا نصور الشاشة حتى لا يقتل التطبيق
+            startForegroundServiceNotification()
+            
+            // 2. بدء محرك التصوير
             val projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
             mediaProjection = projectionManager.getMediaProjection(resultCode, resultData)
             
-            startForegroundServiceNotification()
             startScreenCapture()
             
-            // فرض رسم الشاشة السوداء فوراً عبر المعالج الرئيسي (الحل الأكيد)
-            showBlackScreenTest()
+            // 3. اختبار التشويش باللون الأحمر
+            showRedScreenTest()
         }
 
         return START_STICKY
@@ -60,16 +65,22 @@ class ScreenCaptureService : Service() {
         val notification: Notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, "BlurEngineChannel")
                 .setContentTitle("درع الحماية الذكي")
-                .setContentText("المحرك يعمل ومستعد للحجب...")
+                .setContentText("المحرك يعمل...")
                 .setSmallIcon(android.R.drawable.ic_secure)
                 .build()
         } else {
             Notification.Builder(this)
                 .setContentTitle("درع الحماية الذكي")
-                .setContentText("المحرك يعمل ومستعد للحجب...")
+                .setContentText("المحرك يعمل...")
                 .build()
         }
-        startForeground(1, notification)
+        
+        // السر هنا لمنع الانهيار في أندرويد الحديث
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
+        } else {
+            startForeground(1, notification)
+        }
     }
 
     private fun createNotificationChannel() {
@@ -87,9 +98,9 @@ class ScreenCaptureService : Service() {
     private fun startScreenCapture() {
         val metrics = DisplayMetrics()
         windowManager?.defaultDisplay?.getMetrics(metrics)
-        val density = metrics.densityDpi
         val width = metrics.widthPixels
         val height = metrics.heightPixels
+        val density = metrics.densityDpi
 
         imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
         
@@ -103,35 +114,39 @@ class ScreenCaptureService : Service() {
         imageReader?.setOnImageAvailableListener({ reader ->
             val image = reader.acquireLatestImage()
             if (image != null) {
-                // إغلاق الصورة فوراً لعدم تسريب أي معلومات
+                // التخلص من الصورة لعدم التسريب
                 image.close() 
             }
         }, Handler(Looper.getMainLooper()))
     }
 
-    // الدالة المسؤولة عن الرسم الإجباري على الشاشة
-    private fun showBlackScreenTest() {
-        // إجبار النظام على التنفيذ في المسار الرئيسي للواجهة
+    private fun showRedScreenTest() {
         Handler(Looper.getMainLooper()).post {
             try {
                 if (blurOverlayView == null) {
-                    blurOverlayView = View(this).apply {
-                        setBackgroundColor(Color.BLACK) // أسود قاتم 100% ليغطي الشاشة بالكامل
+                    val metrics = DisplayMetrics()
+                    windowManager?.defaultDisplay?.getMetrics(metrics)
+                    val width = metrics.widthPixels
+                    val height = metrics.heightPixels
+                    
+                    blurOverlayView = FrameLayout(this).apply {
+                        setBackgroundColor(Color.RED) // شاشة حمراء فاقعة
                     }
+                    
                     val params = WindowManager.LayoutParams(
-                        WindowManager.LayoutParams.MATCH_PARENT,
-                        WindowManager.LayoutParams.MATCH_PARENT,
-                        WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, // الصلاحية التي أخذناها من الإعدادات
+                        width,
+                        height + 200, // تجاوز أبعاد الشاشة لضمان التغطية
+                        WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or 
                         WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
                         PixelFormat.TRANSLUCENT
                     )
-                    params.gravity = Gravity.TOP
+                    params.gravity = Gravity.TOP or Gravity.START
                     
                     windowManager?.addView(blurOverlayView, params)
                     
-                    // إزالة الشاشة السوداء بعد 4 ثواني
+                    // إزالة الشاشة الحمراء بعد 4 ثواني
                     Handler(Looper.getMainLooper()).postDelayed({
                         removeBlurOverlay()
                     }, 4000)
