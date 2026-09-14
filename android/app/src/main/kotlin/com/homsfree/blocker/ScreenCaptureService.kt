@@ -17,18 +17,24 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.util.DisplayMetrics
-import android.util.Log
+import android.view.Gravity
+import android.view.View
+import android.view.WindowManager
+import android.graphics.Color
 
 class ScreenCaptureService : Service() {
 
     private var mediaProjection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var imageReader: ImageReader? = null
+    private var windowManager: WindowManager? = null
+    private var blurOverlayView: View? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
+        windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         createNotificationChannel()
     }
 
@@ -42,6 +48,9 @@ class ScreenCaptureService : Service() {
             
             startForegroundServiceNotification()
             startScreenCapture()
+            
+            // فرض رسم الشاشة السوداء فوراً عبر المعالج الرئيسي (الحل الأكيد)
+            showBlackScreenTest()
         }
 
         return START_STICKY
@@ -51,13 +60,13 @@ class ScreenCaptureService : Service() {
         val notification: Notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, "BlurEngineChannel")
                 .setContentTitle("درع الحماية الذكي")
-                .setContentText("محرك التشويش يعالج الشاشة محلياً بأمان...")
+                .setContentText("المحرك يعمل ومستعد للحجب...")
                 .setSmallIcon(android.R.drawable.ic_secure)
                 .build()
         } else {
             Notification.Builder(this)
                 .setContentTitle("درع الحماية الذكي")
-                .setContentText("محرك التشويش يعالج الشاشة محلياً بأمان...")
+                .setContentText("المحرك يعمل ومستعد للحجب...")
                 .build()
         }
         startForeground(1, notification)
@@ -77,8 +86,7 @@ class ScreenCaptureService : Service() {
 
     private fun startScreenCapture() {
         val metrics = DisplayMetrics()
-        val windowManager = getSystemService(Context.WINDOW_SERVICE) as android.view.WindowManager
-        windowManager.defaultDisplay.getMetrics(metrics)
+        windowManager?.defaultDisplay?.getMetrics(metrics)
         val density = metrics.densityDpi
         val width = metrics.widthPixels
         val height = metrics.heightPixels
@@ -95,19 +103,59 @@ class ScreenCaptureService : Service() {
         imageReader?.setOnImageAvailableListener({ reader ->
             val image = reader.acquireLatestImage()
             if (image != null) {
-                // الفحص الآمن جداً (قريباً سيكون TFLite هنا)
+                // إغلاق الصورة فوراً لعدم تسريب أي معلومات
                 image.close() 
             }
         }, Handler(Looper.getMainLooper()))
-        
-        // إرسال أمر إظهار التشويش إلى خدمة AccessibilityService القوية!
-        Log.d("BlurEngine", "إرسال أمر التشويش للاختبار...")
-        val blurIntent = Intent("com.homsfree.blocker.SHOW_BLUR")
-        sendBroadcast(blurIntent)
+    }
+
+    // الدالة المسؤولة عن الرسم الإجباري على الشاشة
+    private fun showBlackScreenTest() {
+        // إجبار النظام على التنفيذ في المسار الرئيسي للواجهة
+        Handler(Looper.getMainLooper()).post {
+            try {
+                if (blurOverlayView == null) {
+                    blurOverlayView = View(this).apply {
+                        setBackgroundColor(Color.BLACK) // أسود قاتم 100% ليغطي الشاشة بالكامل
+                    }
+                    val params = WindowManager.LayoutParams(
+                        WindowManager.LayoutParams.MATCH_PARENT,
+                        WindowManager.LayoutParams.MATCH_PARENT,
+                        WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, // الصلاحية التي أخذناها من الإعدادات
+                        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or 
+                        WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                        PixelFormat.TRANSLUCENT
+                    )
+                    params.gravity = Gravity.TOP
+                    
+                    windowManager?.addView(blurOverlayView, params)
+                    
+                    // إزالة الشاشة السوداء بعد 4 ثواني
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        removeBlurOverlay()
+                    }, 4000)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    private fun removeBlurOverlay() {
+        Handler(Looper.getMainLooper()).post {
+            blurOverlayView?.let {
+                try {
+                    windowManager?.removeView(it)
+                } catch (e: Exception) {}
+                blurOverlayView = null
+            }
+        }
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        removeBlurOverlay()
         virtualDisplay?.release()
         imageReader?.close()
         mediaProjection?.stop()
