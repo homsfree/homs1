@@ -28,7 +28,7 @@
             </intent-filter>
         </activity>
 
-        <!-- تم إصلاح الخطأ هنا بإضافة البادئة android:value -->
+        <!-- السطر الذهبي الذي يطلبه محرك البناء -->
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
