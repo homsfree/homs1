@@ -22,8 +22,9 @@ class BlockingService : AccessibilityService() {
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == "SHOW_RED_SCREEN") {
-                showRedScreen()
+            when (intent?.action) {
+                "SHOW_BLUR" -> showBlurScreen()
+                "HIDE_BLUR" -> removeOverlay()
             }
         }
     }
@@ -32,7 +33,10 @@ class BlockingService : AccessibilityService() {
         super.onServiceConnected()
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         
-        val filter = IntentFilter("SHOW_RED_SCREEN")
+        val filter = IntentFilter().apply {
+            addAction("SHOW_BLUR")
+            addAction("HIDE_BLUR")
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
         } else {
@@ -40,19 +44,19 @@ class BlockingService : AccessibilityService() {
         }
     }
 
-    private fun showRedScreen() {
+    private fun showBlurScreen() {
         if (blurOverlayView != null) return
         
         Handler(Looper.getMainLooper()).post {
             try {
                 blurOverlayView = FrameLayout(this).apply {
-                    setBackgroundColor(Color.RED)
+                    setBackgroundColor(Color.parseColor("#E6000000")) // أسود معتم بنسبة 90% للحجب التام
                 }
 
                 val params = WindowManager.LayoutParams(
                     WindowManager.LayoutParams.MATCH_PARENT,
                     WindowManager.LayoutParams.MATCH_PARENT,
-                    WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY, // هذه الصلاحية لا يمكن لأندرويد 16 قهرها
+                    WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
                     WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
                     PixelFormat.TRANSLUCENT
                 ).apply {
@@ -60,11 +64,6 @@ class BlockingService : AccessibilityService() {
                 }
 
                 windowManager?.addView(blurOverlayView, params)
-
-                // إزالة اللون الأحمر بعد 4 ثواني
-                Handler(Looper.getMainLooper()).postDelayed({
-                    removeOverlay()
-                }, 4000)
             } catch (e: Exception) { }
         }
     }
