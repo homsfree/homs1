@@ -22,7 +22,6 @@ import android.util.Log
 import org.tensorflow.lite.Interpreter
 import java.io.FileInputStream
 import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import java.nio.channels.FileChannel
 
 class ScreenCaptureService : Service() {
@@ -30,7 +29,6 @@ class ScreenCaptureService : Service() {
     private var virtualDisplay: android.hardware.display.VirtualDisplay? = null
     private var imageReader: ImageReader? = null
     
-    // متغيرات المعالجة والذكاء الاصطناعي
     private var tflite: Interpreter? = null
     private var backgroundThread: HandlerThread? = null
     private var backgroundHandler: Handler? = null
@@ -41,17 +39,15 @@ class ScreenCaptureService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        // تهيئة المسار الخلفي للمعالجة الثقيلة
         backgroundThread = HandlerThread("AI_Processing_Thread")
         backgroundThread?.start()
         backgroundHandler = Handler(backgroundThread!!.looper)
 
-        // تحميل موديل الذكاء الاصطناعي
         try {
             tflite = Interpreter(loadModelFile())
             Log.d("BlurEngine", "تم تحميل نموذج الذكاء الاصطناعي بنجاح.")
         } catch (e: Exception) {
-            Log.e("BlurEngine", "تحذير: ملف nsfw.tflite غير موجود في مجلد assets. الرجاء إضافته.")
+            Log.e("BlurEngine", "ملف الموديل غير موجود.")
         }
     }
 
@@ -73,7 +69,6 @@ class ScreenCaptureService : Service() {
             mediaProjection = projectionManager.getMediaProjection(resultCode, resultData)
             
             val metrics = Resources.getSystem().displayMetrics
-            // تقليل الدقة قليلاً لتسريع المعالجة
             val width = metrics.widthPixels / 2
             val height = metrics.heightPixels / 2
             
@@ -83,17 +78,14 @@ class ScreenCaptureService : Service() {
                 DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, imageReader?.surface, null, null
             )
             
-            // قراءة الإطارات وإرسالها للمسار الخلفي
             imageReader?.setOnImageAvailableListener({ reader ->
                 val image = reader.acquireLatestImage() ?: return@setOnImageAvailableListener
-                
                 val currentTime = System.currentTimeMillis()
-                // معالجة صورتين فقط في الثانية لتجنب استنزاف المعالج
                 if (currentTime - lastProcessTime >= 500) {
                     lastProcessTime = currentTime
                     processImageSecurely(image, width, height)
                 } else {
-                    image.close() // تدمير الإطار فوراً لتفريغ الـ RAM
+                    image.close() 
                 }
             }, backgroundHandler)
         }
@@ -103,18 +95,8 @@ class ScreenCaptureService : Service() {
     private fun processImageSecurely(image: Image, width: Int, height: Int) {
         try {
             if (tflite == null) return
-
-            // 1. تحويل الإطار إلى مصفوفة بايتات للذكاء الاصطناعي
-            val planes = image.planes
-            val buffer = planes[0].buffer
             
-            // (هنا يتم تحضير البيانات لـ TFLite بحسب شكل الإدخال للموديل 224x224 عادة)
-            // محاكاة سريعة لقرار الذكاء الاصطناعي (يجب استبدالها لاحقاً بتمرير البفر الفعلي للموديل)
-            // val output = Array(1) { FloatArray(2) }
-            // tflite?.run(inputBuffer, output)
-            
-            // محاكاة لنتيجة الفحص (هل هو آمن أم لا؟)
-            val isNSFW = false // ضع النتيجة الحقيقية هنا من output[0][1] > 0.7
+            val isNSFW = false // سيتم ربطها بنتيجة الموديل الفعلية لاحقاً
 
             if (isNSFW && !isCurrentlyBlocked) {
                 isCurrentlyBlocked = true
@@ -126,7 +108,7 @@ class ScreenCaptureService : Service() {
         } catch (e: Exception) {
             Log.e("BlurEngine", "خطأ في المعالجة: ${e.message}")
         } finally {
-            image.close() // الأهم هندسياً: إغلاق الصورة دائماً لتجنب تسريب الذاكرة (Memory Leak)
+            image.close() 
         }
     }
 
@@ -142,7 +124,9 @@ class ScreenCaptureService : Service() {
             val channel = NotificationChannel(channelId, "Blur Engine", NotificationManager.IMPORTANCE_LOW)
             getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
         }
-        val notification = if (Build.VERSION.SDK_INT >= Build.VERSION.CODES.O) {
+        
+        // تم تصحيح الخطأ المطبعي هنا (VERSION_CODES بدلاً من VERSION.CODES)
+        val notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, channelId).setContentTitle("درع الحماية").setContentText("المراقبة الذكية فعالة").setSmallIcon(android.R.drawable.ic_secure).build()
         } else {
             Notification.Builder(this).setContentTitle("درع الحماية").setContentText("المراقبة الذكية فعالة").build()

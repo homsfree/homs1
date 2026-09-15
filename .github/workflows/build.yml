@@ -66,8 +66,12 @@ jobs:
           tree.write('android/app/src/main/AndroidManifest.xml', encoding='utf-8', xml_declaration=True)
           "
           
-          # استهداف ملف kts الجديد واستخدام صيغة Kotlin الصحيحة
-          sed -i '/dependencies {/a \    implementation("org.tensorflow:tensorflow-lite:2.14.0")\n    implementation("org.tensorflow:tensorflow-lite-support:0.4.4")' android/app/build.gradle.kts
+          # الحقن الهندسي القطعي لمكتبات TFLite
+          echo "" >> android/app/build.gradle.kts
+          echo "dependencies {" >> android/app/build.gradle.kts
+          echo "    implementation(\"org.tensorflow:tensorflow-lite:2.14.0\")" >> android/app/build.gradle.kts
+          echo "    implementation(\"org.tensorflow:tensorflow-lite-support:0.4.4\")" >> android/app/build.gradle.kts
+          echo "}" >> android/app/build.gradle.kts
       - name: Build APK
         run: flutter build apk --release
       - uses: actions/upload-artifact@v4
